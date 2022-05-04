@@ -96,7 +96,7 @@ fn main() -> Result<()> {
 
   println!("Total LoC: {}", total);
   println!("Unused LoC: {}", unused);
-  println!("Coverage %: {:.2}", ((total - unused) as f64 / total as f64) * 100.0);
+  println!("Coverage: {:.2}%", ((total - unused) as f64 / total as f64) * 100.0);
 
   // TODO: generate coverage report in recognizable format?
 
