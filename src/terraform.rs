@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use std::{collections::HashMap, ffi::OsStr, fs, path::PathBuf};
 
 pub type LineNo = (usize, usize);
@@ -6,10 +6,6 @@ pub type TypName = (String, String);
 
 #[derive(Debug, Clone)]
 pub struct Module {
-  path: PathBuf,
-  files: Vec<PathBuf>,
-  lines_total: usize,
-
   pub modules: HashMap<String, ModuleBlock>,
   pub data_sources: HashMap<TypName, ResBlock>,
   pub resources: HashMap<TypName, ResBlock>,
@@ -39,7 +35,6 @@ impl Module {
       .filter(|p| p.is_file() && p.extension().map_or(false, |ext| ext == OsStr::new("tf")))
       .collect();
 
-    let mut lines_total = 0;
     let mut modules = HashMap::new();
     let mut data_sources = HashMap::new();
     let mut resources = HashMap::new();
@@ -59,7 +54,6 @@ impl Module {
         if line.trim_end().is_empty() {
           continue;
         }
-        lines_total += 1;
         let ln = ln0 + 1;
 
         if line.trim_end() == "}" {
@@ -199,9 +193,6 @@ impl Module {
     }
 
     Ok(Self {
-      path: path.clone(),
-      files,
-      lines_total,
       modules,
       data_sources,
       resources,
