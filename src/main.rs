@@ -43,9 +43,9 @@ fn main() -> Result<()> {
 
   // for local modules, compare resources
 
-  let used_modules = state_res
+  let (total, unused) = state_res
     .lines()
-    .fold(HashMap::<PathBuf, terraform::Module>::new(), |mut acc, line| {
+    .filter_map(|line| {
       if line.starts_with("module.") {
         let mut parts = line.split('.').skip(1);
         let module_name = parts.next().unwrap();
@@ -65,36 +65,53 @@ fn main() -> Result<()> {
           n.split_once('[').map_or(n, |x| x.0)
         }
         .to_string();
+        Some((line, module_name, is_data, typ, name))
+      } else {
+        None
+      }
+    })
+    .fold(HashMap::new(), |mut acc, (line, module_name, is_data, typ, name)| {
+      let mb = root_module.modules.get(module_name).unwrap();
+      let m = acc
+        .entry(mb.source_path.clone())
+        .or_insert(terraform::Module::from_path(&mb.source_path).unwrap());
 
-        let mb = root_module.modules.get(module_name).unwrap();
-        let m = acc
-          .entry(mb.source_path.clone())
-          .or_insert(terraform::Module::from_path(&mb.source_path).unwrap());
-
-        // TODO: if something found in state but not in module, report error (could be bug here, or undeployed tf code)
-        if is_data {
-          m.data_sources.get_mut(&(typ, name)).unwrap().used = true;
+      if is_data {
+        if let Some(dsb) = m.data_sources.get_mut(&(typ, name)) {
+          dsb.used = true;
         } else {
-          m.resources.get_mut(&(typ, name)).unwrap().used = true;
+          eprintln!(
+            "ERROR: {} in state but not found in code, drifted deployment or report bug",
+            line
+          );
+        }
+      } else {
+        if let Some(rb) = m.resources.get_mut(&(typ, name)) {
+          rb.used = true;
+        } else {
+          eprintln!(
+            "ERROR: {} in state but not found in code, drifted deployment or report bug",
+            line
+          );
         }
       }
 
       acc
+    })
+    .values()
+    .fold((0, 0), |(mut total, mut unused), m| {
+      m.data_sources.values().chain(m.resources.values()).for_each(|res| {
+        total += res.lineno.1 - res.lineno.0 + 1;
+        if !res.used {
+          println!("{} {} - {}", res.file.to_str().unwrap(), res.lineno.0, res.lineno.1);
+          unused += res.lineno.1 - res.lineno.0 + 1;
+        }
+      });
+
+      (total, unused)
     });
 
-  let (total, unused) = used_modules.values().fold((0, 0), |(mut total, mut unused), m| {
-    m.data_sources.values().chain(m.resources.values()).for_each(|res| {
-      total += res.lineno.1 - res.lineno.0 + 1;
-      if !res.used {
-        println!("{} {} - {}", res.file.to_str().unwrap(), res.lineno.0, res.lineno.1);
-        unused += res.lineno.1 - res.lineno.0 + 1;
-      }
-    });
-
-    (total, unused)
-  });
-
-  println!("Total LoC: {}", total);
+  println!("Checked LoC: {}", total);
   println!("Unused LoC: {}", unused);
   println!("Coverage: {:.2}%", ((total - unused) as f64 / total as f64) * 100.0);
 
